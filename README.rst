@@ -207,6 +207,12 @@ Methods
 *   ``can_fetch(url, user_agent)`` Return True if the user agent can fetch the
     URL, otherwise return ``False``.
 
+    Path matching treats percent-encoded slashes (``%2F`` and ``%2f``) as
+    equivalent to ``/`` in both requested paths and ``Allow``/``Disallow``
+    values. Longest-match priority is calculated after this normalization, so
+    the three characters in ``%2F`` do not make a rule artificially more
+    specific.
+
     *user_agent* may be a product token, such as ``"mybot"``, or a whole
     ``User-Agent`` header value, such as ``"Mozilla/5.0 (compatible;
     mybot/1.0)"``; a group applies when its product token appears in

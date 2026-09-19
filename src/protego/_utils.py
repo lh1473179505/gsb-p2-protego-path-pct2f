@@ -77,18 +77,27 @@ def _join(path: str, parts: ParseResult) -> str:
 
 
 def _quote_path(path: str) -> str:
-    """Return percent encoded path."""
+    """Return a canonical percent-encoded path.
+
+    An encoded path delimiter (``%2F``/``%2f``) is normalized to ``/`` so
+    equivalent path spellings use the same matching key.
+    """
     quoted = _QUOTED_URL(path)
     if quoted:
         return quoted[1]
 
     parts = urlparse(path)
-    path = _unquote(parts.path, ignore="/%")
+    path = _unquote(parts.path, ignore="%")
     path = quote(path, safe="/%=")
     return _join(path, parts) or "/"
 
 
 def _quote_pattern(pattern: str) -> str:
+    """Return a canonical percent-encoded robots path pattern.
+
+    An encoded path delimiter (``%2F``/``%2f``) is normalized to ``/`` so a
+    pattern has the same matching key and priority as its literal-slash form.
+    """
     if _QUOTED_PATTERN(pattern):
         return pattern
 
@@ -105,6 +114,9 @@ def _quote_pattern(pattern: str) -> str:
         pattern = pattern[:-1]
 
     parts = urlparse(pattern)
-    pattern = _unquote(parts.path, ignore="/*$%")
+    # Decode encoded path delimiters just like request paths do. Literal "*"
+    # and "$" remain encoded so their pattern metacharacter semantics do not
+    # change; "%25" remains encoded as a literal percent sign.
+    pattern = _unquote(parts.path, ignore="*$%")
     pattern = quote(pattern, safe="/*%=")
     return _join(pattern + last_char, parts)

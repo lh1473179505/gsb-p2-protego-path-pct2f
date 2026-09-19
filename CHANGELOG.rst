@@ -5,6 +5,13 @@ Protego changelog
 0.x.x (unreleased)
 ==================
 
+-   Path matching now normalizes percent-encoded path delimiters (``%2F`` and
+    ``%2f``) to ``/`` in both requested paths and ``Allow``/``Disallow``
+    values. The two equivalent spellings therefore share the same
+    longest-match result, including Allow precedence on an exact-length tie.
+    Rule priority is based on the normalized pattern length, so ``%2F`` no
+    longer counts as three characters.
+
 -   **Backward-incompatible:** ``Protego.parse()`` now raises a more suitable
     ``TypeError`` instead of a ``ValueError`` when ``content`` is not a string.
 

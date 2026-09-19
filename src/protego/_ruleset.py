@@ -107,6 +107,8 @@ class _RuleSet:
         self._rules.append(_Rule(field="disallow", value=url_pattern))
 
     def finalize_rules(self) -> None:
+        # Priorities are lengths of canonical path patterns. The longest match
+        # wins, and Allow wins an exact-length tie.
         self._rules.sort(
             key=lambda r: (r.value.priority, r.field == "allow"), reverse=True
         )

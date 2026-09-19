@@ -8,6 +8,8 @@ class _URLPattern:
 
     def __init__(self, pattern: str):
         self._pattern: str = pattern
+        # Patterns are canonicalized by their callers, so this counts a path
+        # delimiter as one character whether it was written "/" or "%2F".
         self.priority: int = len(pattern)
         self._contains_asterisk: bool = "*" in self._pattern
         self._contains_dollar: bool = self._pattern.endswith("$")

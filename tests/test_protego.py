@@ -132,6 +132,42 @@ class TestProtego:
         assert rp.can_fetch("https://www.site.local/a<d.html", "*")
         assert rp.can_fetch("https://www.site.local/a%3cd.html", "*")
 
+    @pytest.mark.parametrize("allow_path", ["/a/b", "/a%2Fb"])
+    @pytest.mark.parametrize("url_path", ["/a/b", "/a%2Fb", "/a%2fb"])
+    def test_percent_encoded_slash_longest_match(self, allow_path, url_path):
+        content = (
+            "User-agent: *\n"
+            "Disallow: /a\n"
+            f"Allow: {allow_path}\n"
+        )
+        rp = Protego.parse(content=content)
+
+        # The specific Allow rule must win for every equivalent spelling of
+        # the slash in both the robots rule and the requested path.
+        assert rp.can_fetch(url_path, "*")
+
+        rules = rp._user_agents["*"]._rules
+        assert [
+            (rule.field, rule.value._pattern, rule.value.priority)
+            for rule in rules
+        ] == [("allow", "/a/b", 4), ("disallow", "/a", 2)]
+
+    @pytest.mark.parametrize("url_path", ["/a/b/c", "/a%2Fb/c", "/a%2fb/c"])
+    def test_percent_encoded_slash_uses_normalized_priority(self, url_path):
+        # The encoded slash in Allow is normalized to one character, so the
+        # longer literal Disallow prefix wins instead of the two rules tying
+        # at encoded-pattern length 6.
+        content = "User-agent: *\nAllow: /a%2Fb\nDisallow: /a/b/c\n"
+        rp = Protego.parse(content=content)
+
+        assert not rp.can_fetch(url_path, "*")
+
+        rules = rp._user_agents["*"]._rules
+        assert [
+            (rule.field, rule.value._pattern, rule.value.priority)
+            for rule in rules
+        ] == [("disallow", "/a/b/c", 6), ("allow", "/a/b", 4)]
+
     def test_url_parts(self):
         content = "User-agent: * \nDisallow: /path;params?query \n"
         rp = Protego.parse(content=content)
@@ -895,9 +931,10 @@ class TestProtego:
         assert rp.can_fetch("/a%3Cd.html", "3bot")
         assert rp.can_fetch("/a%3cd.html", "4bot")
         assert rp.can_fetch("/a%3Cd.html", "4bot")
+        # Percent-encoded path delimiters are equivalent to literal slashes.
         assert rp.can_fetch("/a%2fb.html", "5bot")
-        assert not rp.can_fetch("/a/b.html", "5bot")
-        assert not rp.can_fetch("/a%2fb.html", "6bot")
+        assert rp.can_fetch("/a/b.html", "5bot")
+        assert rp.can_fetch("/a%2fb.html", "6bot")
         assert rp.can_fetch("/a/b.html", "6bot")
         assert rp.can_fetch("/~joe/index.html", "7bot")
         assert rp.can_fetch("/%7Ejoe/index.html", "8bot")
@@ -1442,7 +1479,9 @@ def test_redos():
         ("/a/b", "/a/b", "/a/b"),
         ("/a=b", "/a=b", "/a=b"),
         ("//host/path", "/path", "//host/path"),
-        ("/a%2fb", "/a%2Fb", "/a%2Fb"),
+        ("/a%2fb", "/a/b", "/a/b"),
+        ("/a%2F", "/a/", "/a/"),
+        ("/a%2f?b=%2F", "/a/?b=%2F", "/a/?b=%2F"),
         ("/a?b", "/a?b", "/a?b"),
         ("/a;b", "/a;b", "/a;b"),
         ("/a:b", "/a%3Ab", "/a%3Ab"),
