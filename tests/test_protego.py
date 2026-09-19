@@ -3,6 +3,7 @@ from datetime import time
 import pytest
 
 from protego import Protego
+from protego._urlpattern import _URLPattern
 from protego._utils import _parse_time_period, _quote_path, _quote_pattern
 
 
@@ -896,8 +897,11 @@ class TestProtego:
         assert rp.can_fetch("/a%3cd.html", "4bot")
         assert rp.can_fetch("/a%3Cd.html", "4bot")
         assert rp.can_fetch("/a%2fb.html", "5bot")
-        assert not rp.can_fetch("/a/b.html", "5bot")
-        assert not rp.can_fetch("/a%2fb.html", "6bot")
+        # The 1996 RFC treated /a%2fb.html and /a/b.html as different paths,
+        # but RFC 9309 §2.2.3 makes %2F equivalent to "/": both rules match
+        # both encodings.
+        assert rp.can_fetch("/a/b.html", "5bot")
+        assert rp.can_fetch("/a%2fb.html", "6bot")
         assert rp.can_fetch("/a/b.html", "6bot")
         assert rp.can_fetch("/~joe/index.html", "7bot")
         assert rp.can_fetch("/%7Ejoe/index.html", "8bot")
@@ -1442,7 +1446,8 @@ def test_redos():
         ("/a/b", "/a/b", "/a/b"),
         ("/a=b", "/a=b", "/a=b"),
         ("//host/path", "/path", "//host/path"),
-        ("/a%2fb", "/a%2Fb", "/a%2Fb"),
+        ("/a%2fb", "/a/b", "/a/b"),
+        ("/a%2Fb", "/a/b", "/a/b"),
         ("/a?b", "/a?b", "/a?b"),
         ("/a;b", "/a;b", "/a;b"),
         ("/a:b", "/a%3Ab", "/a%3Ab"),
@@ -1460,3 +1465,61 @@ def test_redos():
 def test_quoting(value, path, pattern):
     assert _quote_path(value) == path
     assert _quote_pattern(value) == pattern
+
+
+# URL paths that differ only in whether "/" is written literally or as a
+# percent-encoded octet ("%2F", in any letter case) identify the same
+# resource (RFC 9309 §2.2.3), so they must share a single matching key and
+# a single Allow/Disallow verdict.
+_SLASH_EQUIVALENT_PATHS = ("/a/b", "/a%2Fb", "/a%2fb")
+
+
+@pytest.mark.parametrize("allow", ["/a/b", "/a%2Fb", "/a%2fb"])
+@pytest.mark.parametrize("url_path", _SLASH_EQUIVALENT_PATHS)
+def test_percent_encoded_slash_allow(allow, url_path):
+    """A more specific Allow beats a shorter Disallow no matter which
+    encoding of "/" the robots.txt rule and the requested URL each use."""
+    content = f"User-agent: *\nDisallow: /a\nAllow: {allow}\n"
+    rp = Protego.parse(content)
+    assert rp.can_fetch(f"http://example.com{url_path}", "*")
+    # The shorter Disallow still applies to paths the Allow does not cover.
+    assert not rp.can_fetch("http://example.com/a/c", "*")
+
+
+@pytest.mark.parametrize("disallow", ["/a/b", "/a%2Fb", "/a%2fb"])
+@pytest.mark.parametrize("url_path", _SLASH_EQUIVALENT_PATHS)
+def test_percent_encoded_slash_disallow(disallow, url_path):
+    """A more specific Disallow beats a shorter Allow no matter which
+    encoding of "/" the robots.txt rule and the requested URL each use."""
+    content = f"User-agent: *\nAllow: /a\nDisallow: {disallow}\n"
+    rp = Protego.parse(content)
+    assert not rp.can_fetch(f"http://example.com{url_path}", "*")
+    # The shorter Allow still applies to paths the Disallow does not cover.
+    assert rp.can_fetch("http://example.com/a/c", "*")
+
+
+@pytest.mark.parametrize("url_path", _SLASH_EQUIVALENT_PATHS)
+def test_percent_encoded_slash_tie_allow_wins(url_path):
+    """Rules that normalize to the same path have the same length, so the
+    Allow-vs-Disallow tie is resolved in favor of Allow."""
+    content = "User-agent: *\nDisallow: /a/b\nAllow: /a%2Fb\n"
+    rp = Protego.parse(content)
+    assert rp.can_fetch(f"http://example.com{url_path}", "*")
+
+
+def test_percent_encoded_slash_priority():
+    """The priority of a rule must not depend on whether "/" was written
+    literally or as "%2F" in the robots.txt file."""
+    plain = _URLPattern(_quote_pattern("/a/b"))
+    encoded = _URLPattern(_quote_pattern("/a%2Fb"))
+    assert encoded._pattern == plain._pattern == "/a/b"
+    assert encoded.priority == plain.priority
+
+    # The normalized Allow sorts ahead of the shorter Disallow.
+    content = "User-agent: *\nDisallow: /a\nAllow: /a%2Fb\n"
+    rp = Protego.parse(content)
+    rule_set = rp._get_matching_rule_set("mybot")
+    assert [(rule.field, rule.value.priority) for rule in rule_set._rules] == [
+        ("allow", len("/a/b")),
+        ("disallow", len("/a")),
+    ]

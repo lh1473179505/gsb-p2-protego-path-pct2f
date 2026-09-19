@@ -7,6 +7,10 @@ class _URLPattern:
     """Internal class which represents a URL pattern."""
 
     def __init__(self, pattern: str):
+        # The pattern is already normalized by _quote_pattern: equivalent
+        # encodings of a path (e.g. "/" and "%2F") share the same string, so
+        # its length is a stable priority that does not favor a longer
+        # literal encoding.
         self._pattern: str = pattern
         self.priority: int = len(pattern)
         self._contains_asterisk: bool = "*" in self._pattern

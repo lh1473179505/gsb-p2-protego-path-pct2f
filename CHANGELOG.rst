@@ -5,6 +5,15 @@ Protego changelog
 0.x.x (unreleased)
 ==================
 
+-   Fixed URL matching so that ``/`` and its percent-encoded form ``%2F``
+    (in any letter case) are treated as equivalent in URL paths and in
+    ``Allow``/``Disallow`` patterns, as RFC 9309 §2.2.3 requires. Both forms
+    now normalize to the same matching key, and rule priority is computed on
+    the normalized pattern, so the encoding style no longer affects
+    longest-match precedence: e.g. with ``Disallow: /a`` and
+    ``Allow: /a/b``, both ``/a/b`` and ``/a%2Fb`` are now allowed, and
+    ``Allow: /a%2Fb`` behaves exactly like ``Allow: /a/b``.
+
 -   **Backward-incompatible:** ``Protego.parse()`` now raises a more suitable
     ``TypeError`` instead of a ``ValueError`` when ``content`` is not a string.
 

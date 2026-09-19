@@ -77,13 +77,19 @@ def _join(path: str, parts: ParseResult) -> str:
 
 
 def _quote_path(path: str) -> str:
-    """Return percent encoded path."""
+    """Return percent encoded path.
+
+    Percent-encoded octets are decoded before quoting, including %2F, so
+    that equivalent paths such as /a/b and /a%2Fb normalize to the same
+    matching key, as RFC 9309 §2.2.3 requires. Only %25 (a literal percent
+    sign) is left encoded.
+    """
     quoted = _QUOTED_URL(path)
     if quoted:
         return quoted[1]
 
     parts = urlparse(path)
-    path = _unquote(parts.path, ignore="/%")
+    path = _unquote(parts.path, ignore="%")
     path = quote(path, safe="/%=")
     return _join(path, parts) or "/"
 
@@ -105,6 +111,9 @@ def _quote_pattern(pattern: str) -> str:
         pattern = pattern[:-1]
 
     parts = urlparse(pattern)
-    pattern = _unquote(parts.path, ignore="/*$%")
+    # %2F is decoded into / so that a pattern matches equivalent URL paths
+    # regardless of which form each side uses, and so that the length of the
+    # resulting pattern (its priority) does not depend on the encoding style.
+    pattern = _unquote(parts.path, ignore="*$%")
     pattern = quote(pattern, safe="/*%=")
     return _join(pattern + last_char, parts)
